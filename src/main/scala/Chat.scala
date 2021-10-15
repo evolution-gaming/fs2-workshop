@@ -54,7 +54,39 @@ object Chat extends IOApp.Simple {
     */
   override def run: IO[Unit] = {
 
-    val firstPull: Pull[IO, Message, Unit] = ???
+    // Given 2 messages, outputs the latest one and continues processing the streams
+    def merge(captainMessage: Message, captainStream: Stream[IO, Message],
+      doctorMessage: Message, doctorStream: Stream[IO, Message]): Pull[IO, Message, Unit] = {
+      if (captainMessage.timestamp <= doctorMessage.timestamp)
+        Pull.output1(captainMessage) >> captainStream.pull.uncons1.flatMap {
+          case None                            => single(doctorMessage, doctorStream)
+          case Some((nextMessage, nextStream)) => merge(nextMessage, nextStream, doctorMessage, doctorStream)
+        }
+      else
+        Pull.output1(doctorMessage) >> doctorStream.pull.uncons1.flatMap {
+          case None                            => single(captainMessage, captainStream)
+          case Some((nextMessage, nextStream)) => merge(captainMessage, captainStream, nextMessage, nextStream)
+        }
+    }
+
+    // Given 1 message and 1 stream, outputs it and the rest of the stream
+    def single(line: Message, stream: Stream[IO, Message]): Pull[IO, Message, Unit] =
+      Pull.output1(line) >> stream.pull.echo
+
+    val firstPull: Pull[IO, Message, Unit] = for {
+      c <- captainFileStream.pull.uncons1
+      d <- doctorFileStream.pull.uncons1
+      action <- (c, d) match {
+        case (None, None)                                                                 =>
+          Pull.done
+        case (Some((captainMessage, captainStream)), Some((doctorMessage, doctorStream))) =>
+          merge(captainMessage, captainStream, doctorMessage, doctorStream)
+        case (Some((captainMessage, captainStream)), None)                                =>
+          single(captainMessage, captainStream)
+        case (None, Some((doctorMessage, doctorStream)))                                  =>
+          single(doctorMessage, doctorStream)
+      }
+    } yield action
 
     firstPull.stream.evalMap(msg => IO(println(msg))).compile.drain
   }

@@ -79,8 +79,22 @@ object RedLightGreenLight extends IOApp.Simple {
   def gameLogic(gameState: SignallingRef[IO, GameState],
     greenLight: SignallingRef[IO, Boolean],
     playerInput: SignallingRef[IO, Option[Char]]
-  ): Stream[IO, Unit] = ???
-
+  ): Stream[IO, Unit] = Stream.repeatEval(for {
+    state <- gameState.get
+    light <- greenLight.get
+    input <- playerInput.get
+    (moving, newPosition) = state.mode match {
+      case Running if input.nonEmpty => (true, state.playerPosition + 1)
+      case _                           => (false, state.playerPosition)
+    }
+    newMode = state.mode match {
+      case Running => if (moving && !light) Loss else if (newPosition >= TrackSize) Victory else Running
+      case end     => end
+    }
+    newState = GameState(newPosition, newMode)
+    _ <- playerInput.set(None)
+    stateUpdate <- if (newState != state) gameState.set(newState) else IO.unit
+  } yield stateUpdate).metered(10.millis).concurrently(lightChanger(greenLight))
 
   override def run: IO[Unit] = for {
     gameState <- SignallingRef[IO, GameState](GameState(1, Running))

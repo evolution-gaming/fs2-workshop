@@ -19,7 +19,8 @@ object Collatz extends App {
     * end up in a loop 4 -> 2 -> 1 -> 4. However since no one has proved this, we use streams for safety!
     */
   def collatz(start: Int): Stream[Pure, Int] = {
-    ???
+    val next = if (start % 2 == 0) start / 2 else start * 3 + 1
+    Stream(start) ++ collatz(next)
   }
 
 
@@ -34,7 +35,12 @@ object Collatz extends App {
     * Example: Stream(2, 1, 4) should become Stream("2", "Shrinking!", "1", "Growing!", "4", "Shrinking!")
     * Tip: Use flatMap!
     */
-  def bonus(stream: Stream[Pure, Int]): Stream[Pure, String] = Stream.empty
+  def bonus(stream: Stream[Pure, Int]): Stream[Pure, String] = {
+    stream.flatMap(number => Stream(
+      number.toString,
+      if (number % 2 == 0) "Shrinking!" else "Growing!"
+    ))
+  }
 
   bonus(collatz(5).takeThrough(_ != 1)).toList.foreach(println)
 }
